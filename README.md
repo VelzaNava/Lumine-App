@@ -117,6 +117,3 @@ This app is part of a thesis implementing the **ALBJOA** algorithm on a hybrid A
 
 ---
 
-## License
-
-MIT — see [LICENSE](LICENSE)
