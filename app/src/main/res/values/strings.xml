@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">LumineApp</string>
+    <!-- Required by Unity 2022.3 when embedded as a library (not as UnityPlayerActivity).
+         UnityPlayer calls getIdentifier("game_view_content_description", "string", packageName)
+         at construction time; getString(0) throws NotFoundException if this is missing. -->
+    <string name="game_view_content_description">Game view</string>
+</resources>

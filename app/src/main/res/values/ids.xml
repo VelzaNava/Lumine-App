@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Required by Unity 2022.3 embedded as library.
+         UnityPlayer's surface view constructor calls:
+           getIdentifier("unitySurfaceView", "id", packageName)
+         and uses the result as the view's ID. Returns 0 without this
+         declaration, causing NotFoundException: String resource ID #0x0. -->
+    <item type="id" name="unitySurfaceView"/>
+</resources>
