@@ -83,26 +83,12 @@ private const val BASE_URL = "http://your-backend-url:5111/"
 
 ## Project Structure
 
-```
-app/src/main/java/com/thesis/lumine/
-├── data/
-│   ├── api/          # Retrofit API service + client
-│   ├── model/        # Data classes (Jewelry, AuthModels, UserProfile)
-│   └── repository/   # JewelryRepository — single source of truth
-├── ui/
-│   ├── auth/         # Login, Register, OTP verification screens
-│   ├── ar/           # AR try-on screen + rating dialog
-│   ├── catalog/      # Jewelry catalog screen
-│   ├── profile/      # Profile, edit profile, favorites screens
-│   └── admin/        # Admin panel (jewelry CRUD + user management)
-├── utils/
-│   ├── CameraManager.kt    # CameraX setup + frame preprocessing
-│   ├── MediaPipeHelper.kt  # Hand and face landmark detection
-│   ├── UnityBridge.kt      # Android ↔ Unity IPC via UnitySendMessage
-│   ├── AROverlayView.kt    # 2D canvas overlay for jewelry drawing
-│   └── SessionManager.kt  # Encrypted local session storage
-└── viewmodel/        # AuthViewModel, ProfileViewModel, JewelryViewModel, EvaluationViewModel
-```
+Under `app/src/main/java/com/thesis/lumine/`:
+
+- `data/` — Retrofit API service, data classes, and the jewelry repository
+- `ui/` — Compose screens grouped by feature: `auth`, `ar`, `catalog`, `profile`, `admin`
+- `utils/` — `CameraManager` (CameraX), `MediaPipeHelper` (hand + face landmarks), `UnityBridge` (Android-Unity IPC), `AROverlayView` (2D overlay), `SessionManager` (encrypted local session)
+- `viewmodel/` — AuthViewModel, ProfileViewModel, JewelryViewModel, EvaluationViewModel
 
 ---
 
