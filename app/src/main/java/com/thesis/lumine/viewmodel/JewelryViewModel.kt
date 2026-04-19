@@ -1,14 +1,19 @@
 package com.thesis.lumine.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.thesis.lumine.data.model.Jewelry
 import com.thesis.lumine.data.repository.JewelryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 
-class JewelryViewModel : ViewModel() {
+class JewelryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = JewelryRepository()
 
@@ -24,12 +29,13 @@ class JewelryViewModel : ViewModel() {
     private val _crudSuccess = MutableStateFlow<String?>(null)
     val crudSuccess: StateFlow<String?> = _crudSuccess
 
+    private val _isUploading = MutableStateFlow(false)
+    val isUploading: StateFlow<Boolean> = _isUploading
+
     init {
-        // i-load agad yung jewelry list pagka-init ng viewmodel
         loadJewelry()
     }
 
-    // kunin lahat ng jewelry galing sa backend tapos i-store sa state
     fun loadJewelry() {
         viewModelScope.launch {
             try {
@@ -49,7 +55,6 @@ class JewelryViewModel : ViewModel() {
         }
     }
 
-    // kunin lahat tapos i-filter sa client side base sa selected type
     fun filterByType(type: String) {
         viewModelScope.launch {
             try {
@@ -65,7 +70,6 @@ class JewelryViewModel : ViewModel() {
         }
     }
 
-    // i-create yung bagong jewelry tapos i-reload yung list para mag-update ang UI
     fun createJewelry(jewelry: Jewelry, onDone: () -> Unit) {
         viewModelScope.launch {
             try {
@@ -86,7 +90,6 @@ class JewelryViewModel : ViewModel() {
         }
     }
 
-    // i-update yung existing jewelry — i-refresh yung list pagkatapos
     fun updateJewelry(id: String, jewelry: Jewelry, onDone: () -> Unit) {
         viewModelScope.launch {
             try {
@@ -107,7 +110,6 @@ class JewelryViewModel : ViewModel() {
         }
     }
 
-    // i-delete yung jewelry item tapos i-reload para mawala sa list
     fun deleteJewelry(id: String, onDone: () -> Unit) {
         viewModelScope.launch {
             try {
@@ -128,7 +130,31 @@ class JewelryViewModel : ViewModel() {
         }
     }
 
-    // i-clear yung success at error messages para hindi mag-show ulit
+    // i-pick yung image galing sa phone storage tapos i-upload sa backend
+    fun uploadJewelryImage(uri: Uri, onSuccess: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                _isUploading.value = true
+                val context = getApplication<Application>().applicationContext
+                val inputStream = context.contentResolver.openInputStream(uri) ?: return@launch
+                val bytes = inputStream.readBytes()
+                inputStream.close()
+                val requestBody = bytes.toRequestBody("image/*".toMediaType())
+                val part = MultipartBody.Part.createFormData("file", "jewelry.jpg", requestBody)
+                val resp = repository.uploadJewelryImage(part)
+                if (resp.isSuccessful && resp.body() != null) {
+                    onSuccess(resp.body()!!.imageUrl)
+                } else {
+                    _error.value = "Failed to upload image"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Upload failed"
+            } finally {
+                _isUploading.value = false
+            }
+        }
+    }
+
     fun clearCrudSuccess() { _crudSuccess.value = null }
     fun clearError()       { _error.value = null }
 }

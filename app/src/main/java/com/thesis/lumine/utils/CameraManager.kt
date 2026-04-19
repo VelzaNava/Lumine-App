@@ -23,17 +23,27 @@ class CameraManager(
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     var onFrameAvailable: ((MPImage, Long) -> Unit)? = null
+    var onCameraFacingChanged: ((Boolean) -> Unit)? = null  // notifies UI when camera flips
 
     private var frameCount = 0
-    private val FRAME_SKIP = 3  // Process every 4th frame (increased from 2)
+    private val FRAME_SKIP = 3
+
+    var useFrontCamera: Boolean = true
+        private set
 
     fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
             bindCamera()
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    // i-toggle ang front/back camera tapos i-rebind
+    fun switchCamera() {
+        useFrontCamera = !useFrontCamera
+        onCameraFacingChanged?.invoke(useFrontCamera)
+        cameraProvider?.let { bindCamera() }
     }
 
     private fun bindCamera() {
@@ -41,22 +51,21 @@ class CameraManager(
 
         val preview = Preview.Builder()
             .build()
-            .also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
+            .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
         val imageAnalysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(android.util.Size(480, 360))  // Even lower resolution
+            .setTargetResolution(android.util.Size(480, 360))
             .build()
             .also {
-                it.setAnalyzer(cameraExecutor) { imageProxy ->
-                    processFrame(imageProxy)
-                }
+                it.setAnalyzer(cameraExecutor) { imageProxy -> processFrame(imageProxy) }
             }
 
-        val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+        val cameraSelector = if (useFrontCamera)
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        else
+            CameraSelector.DEFAULT_BACK_CAMERA
 
         try {
             cameraProvider.unbindAll()
@@ -82,36 +91,26 @@ class CameraManager(
 
             val bitmap = imageProxy.toBitmap()
 
-            // kailangan i-rotate at i-mirror muna yung bitmap bago i-feed sa MediaPipe
-            //
-            // yung camera sensor nag-ca-capture ng landscape kahit portrait yung phone.
-            // pag hindi natin nai-rotate, makikita ng MediaPipe yung sideways na image
-            // at mali yung landmark coordinates — nakapalit yung X at Y sa screen.
-            //
-            // rotationDegrees (usually 270° sa front cam, portrait) = kung gaano kalayo
-            // ang raw frame sa tamang orientation.
-            //
-            // front camera mirror: ginagawa ng CameraX PreviewView ang selfie mirror automatically,
-            // kaya kailangan nating gayahin din sa bitmap para nag-match ang coords sa screen.
+            // kailangan i-rotate at optionally i-mirror ang bitmap bago i-feed sa MediaPipe
             val rotationDegrees = imageProxy.imageInfo.rotationDegrees
             val matrix = Matrix().apply {
-                // i-rotate sa portrait orientation
                 postRotate(rotationDegrees.toFloat())
-                // i-mirror horizontally para selfie view — after rotation, width = original height
-                val rotatedWidth = if (rotationDegrees % 180 != 0) bitmap.height.toFloat()
-                                   else bitmap.width.toFloat()
-                postScale(-1f, 1f, rotatedWidth / 2f, 0f)
+                // front camera only: mirror para mag-match sa selfie preview ng CameraX
+                if (useFrontCamera) {
+                    val rotatedWidth = if (rotationDegrees % 180 != 0) bitmap.height.toFloat()
+                                       else bitmap.width.toFloat()
+                    postScale(-1f, 1f, rotatedWidth / 2f, 0f)
+                }
             }
 
             val correctedBitmap = Bitmap.createBitmap(
                 bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
             )
-            bitmap.recycle() // i-free yung original — correctedBitmap na ang gagamitin ng MediaPipe
+            bitmap.recycle()
 
-            val mpImage = BitmapImageBuilder(correctedBitmap).build()
+            val mpImage   = BitmapImageBuilder(correctedBitmap).build()
             val timestamp = System.currentTimeMillis()
 
-            // huwag i-recycle yung correctedBitmap dito — hawak pa ng mpImage habang nag-po-process ang MediaPipe
             onFrameAvailable?.invoke(mpImage, timestamp)
         } catch (e: Exception) {
             e.printStackTrace()

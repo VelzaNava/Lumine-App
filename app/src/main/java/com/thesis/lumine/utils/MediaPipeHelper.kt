@@ -40,9 +40,9 @@ class MediaPipeHelper(context: Context) {
                     error.printStackTrace()
                 }
                 .setNumFaces(1)
-                .setMinFaceDetectionConfidence(0.5f)
-                .setMinFacePresenceConfidence(0.5f)
-                .setMinTrackingConfidence(0.5f)
+                .setMinFaceDetectionConfidence(0.6f)
+                .setMinFacePresenceConfidence(0.6f)
+                .setMinTrackingConfidence(0.6f)
                 .build()
 
             faceLandmarker = FaceLandmarker.createFromOptions(applicationContext, options)

@@ -9,5 +9,7 @@ data class Jewelry(
     val price: Double,
     val imageUrl: String?,
     val modelUrl: String?,
-    val isAvailable: Boolean
+    val description: String? = null,
+    val isAvailable: Boolean,
+    val isArEnabled: Boolean = false
 )

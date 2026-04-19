@@ -2,6 +2,7 @@ package com.thesis.lumine.data.api
 
 import com.thesis.lumine.data.model.*
 import okhttp3.MultipartBody
+import com.thesis.lumine.data.model.ImageUploadResponse
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -108,4 +109,11 @@ interface LumineApiService {
     // i-delete yung jewelry item — permanent, walang undo
     @DELETE("api/jewelry/{id}")
     suspend fun deleteJewelry(@Path("id") id: String): Response<Unit>
+
+    // i-upload yung jewelry image sa storage tapos i-return yung public URL
+    @Multipart
+    @POST("api/jewelry/upload-image")
+    suspend fun uploadJewelryImage(
+        @Part file: MultipartBody.Part
+    ): Response<ImageUploadResponse>
 }

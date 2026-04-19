@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.FlipCameraAndroid
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
@@ -156,10 +157,13 @@ fun ARScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .padding(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                )
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -170,18 +174,18 @@ fun ARScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${jewelry.material.replaceFirstChar { it.uppercase() }} ${jewelry.type.replaceFirstChar { it.uppercase() }}",
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = "${jewelry.material.replaceFirstChar { it.uppercase() }} • ${jewelry.type.replaceFirstChar { it.uppercase() }}",
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "₱${String.format("%.2f", jewelry.price)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
                     }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "₱${String.format("%.2f", jewelry.price)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -286,6 +290,13 @@ fun ARRatingDialog(
     )
 }
 
+// ── Unity process-level singleton ────────────────────────────────────────────
+// UnityPlayer can only be instantiated ONCE per process lifetime.
+// libunity.so keeps static native state alive even after pause().
+// Recreating it on the second AR session crashes with SIGSEGV.
+// Solution: cache it here at the module level and reuse on every session.
+private var cachedUnityPlayer: Any? = null
+
 // camera + AR layers composable — tatlong layers: camera, Unity, at 2D overlay
 @Composable
 fun ARCameraView(
@@ -299,13 +310,16 @@ fun ARCameraView(
     var mediaPipeHelper: MediaPipeHelper? by remember { mutableStateOf(null) }
     var overlayView: AROverlayView? by remember { mutableStateOf(null) }
     var trackingActive by remember { mutableStateOf(false) }
+    var isFrontCamera by remember { mutableStateOf(true) }
 
     // ── Unity Player ──────────────────────────────────────────────────────────
-    // Created once via reflection so the app still compiles/runs without Unity.
+    // Return the cached instance on every re-entry — never instantiate twice.
     // Unity 2022.3 uses UnityPlayer(Context, IUnityPlayerLifecycleEvents).
-    // Older versions use UnityPlayer(Context). We try both.
     val unityPlayer = remember {
-        try {
+        if (cachedUnityPlayer != null) {
+            Log.d("ARScreen", "Reusing cached UnityPlayer ✅")
+            cachedUnityPlayer
+        } else try {
             val cls = Class.forName("com.unity3d.player.UnityPlayer")
 
             // IUnityPlayerLifecycleEvents is a package-level interface (not inner class)
@@ -355,6 +369,7 @@ fun ARCameraView(
             cls.getMethod("windowFocusChanged", Boolean::class.javaPrimitiveType)
                 .invoke(player, true)
             Log.d("ARScreen", "UnityPlayer created successfully ✅")
+            cachedUnityPlayer = player   // cache for all future AR sessions
             player
 
         } catch (e: Exception) {
@@ -451,6 +466,9 @@ fun ARCameraView(
                 PreviewView(ctx).apply {
                     val manager = CameraManager(ctx, this, lifecycleOwner)
                     cameraManager = manager
+
+                    // i-sync yung isFrontCamera state sa Compose pag nag-switch ang camera
+                    manager.onCameraFacingChanged = { front -> isFrontCamera = front }
 
                     manager.onFrameAvailable = { image, timestamp ->
                         try {
@@ -555,6 +573,24 @@ fun ARCameraView(
                     }
                 },
                 modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // ── Camera Flip Button (bottom-left) ─────────────────────────────────
+        // Lives here — inside ARCameraView — so cameraManager and isFrontCamera are in scope
+        SmallFloatingActionButton(
+            onClick = { cameraManager?.switchCamera() },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 20.dp, bottom = 100.dp),
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f),
+            contentColor   = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            Icon(
+                imageVector        = Icons.Default.FlipCameraAndroid,
+                contentDescription = if (isFrontCamera) "Switch to back camera"
+                                     else "Switch to front camera",
+                modifier = Modifier.size(22.dp)
             )
         }
 

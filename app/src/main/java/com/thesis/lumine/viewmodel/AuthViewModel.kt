@@ -56,7 +56,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // i-register ang user — i-check email at password format bago mag-proceed
     fun register(email: String, password: String) {
-        if (!validateEmail(email))       { _authState.value = AuthState.Error("Enter a valid email address."); return }
+        if (!validateEmail(email))       { _authState.value = AuthState.Error("Please use a valid email provider (e.g. Gmail, Outlook, Yahoo, iCloud)."); return }
         if (!validatePassword(password)) { _authState.value = AuthState.Error("Password must be at least 8 characters."); return }
 
         viewModelScope.launch {
@@ -97,7 +97,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // i-login ang user — 401 means maling credentials, handle mo yun
     fun login(email: String, password: String) {
-        if (!validateEmail(email))    { _authState.value = AuthState.Error("Enter a valid email address."); return }
+        if (!validateEmail(email))    { _authState.value = AuthState.Error("Please use a valid email provider (e.g. Gmail, Outlook, Yahoo, iCloud)."); return }
         if (password.isBlank())       { _authState.value = AuthState.Error("Password is required."); return }
 
         viewModelScope.launch {
@@ -137,7 +137,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // i-store muna yung credentials tapos mag-send ng OTP
     fun initRegisterOtp(email: String, password: String) {
-        if (!validateEmail(email))       { _authState.value = AuthState.Error("Enter a valid email address."); return }
+        if (!validateEmail(email))       { _authState.value = AuthState.Error("Please use a valid email provider (e.g. Gmail, Outlook, Yahoo, iCloud)."); return }
         if (!validatePassword(password)) { _authState.value = AuthState.Error("Password must be at least 8 characters."); return }
         _pendingEmail    = email.trim()
         _pendingPassword = password
@@ -170,20 +170,22 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // OTP auth (existing flow para sa magic link login)
 
-    // i-send yung OTP sa email — handle yung 429 rate limit response
+    // i-send yung OTP sa email — handle yung 409 (existing email), 429 (rate limit)
     fun sendOtp(email: String) {
         viewModelScope.launch {
             try {
                 _authState.value = AuthState.Loading
                 val response = repository.sendOtp(email)
                 when {
+                    response.code() == 409 ->
+                        _authState.value = AuthState.Error("An account with this email already exists. Please log in instead.")
                     response.code() == 429 ->
                         _authState.value = AuthState.Error("Too many requests. Please wait 60 seconds.")
                     response.isSuccessful -> {
                         _otpSent.value = true
                         _authState.value = AuthState.OtpSent
                     }
-                    else -> _authState.value = AuthState.Error("Failed to send OTP")
+                    else -> _authState.value = AuthState.Error("Failed to send OTP. Check your email address.")
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.Error(e.message ?: "Network error")
@@ -224,9 +226,28 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     // validation helpers — simple checks para sa email at password format
 
-    // i-check kung valid yung email format gamit yung Android patterns
-    private fun validateEmail(email: String): Boolean =
-        android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
+    // short whitelist of accepted email domains
+    private val allowedDomains = setOf(
+        "gmail.com", "googlemail.com",
+        "yahoo.com", "yahoo.co.uk", "yahoo.com.ph",
+        "outlook.com", "hotmail.com", "live.com", "live.com.ph",
+        "icloud.com", "me.com", "mac.com",
+        "protonmail.com", "proton.me",
+        "aol.com", "zoho.com", "yandex.com",
+        "gmx.com", "gmx.net", "mail.com"
+    )
+
+    // parse the email as a URI to extract the host (domain), then check the whitelist
+    // "//${email}" makes the URI treat "user@gmail.com" as authority → uri.host = "gmail.com"
+    private fun validateEmail(email: String): Boolean {
+        return try {
+            val uri = java.net.URI("//${email.trim()}")
+            val host = uri.host?.lowercase() ?: return false
+            host in allowedDomains || host.endsWith(".edu") || host.endsWith(".edu.ph")
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     // minimum 8 characters lang ang requirement para sa password
     private fun validatePassword(password: String): Boolean =

@@ -55,4 +55,6 @@ class JewelryRepository {
 
     // i-delete yung jewelry — walang recovery, burahin na talaga
     suspend fun deleteJewelry(id: String) = api.deleteJewelry(id)
+
+    suspend fun uploadJewelryImage(filePart: MultipartBody.Part) = api.uploadJewelryImage(filePart)
 }

@@ -10,6 +10,7 @@ data class UserProfileResponse(
 )
 
 data class AvatarResponse(val avatarUrl: String)
+data class ImageUploadResponse(val imageUrl: String)
 
 data class UpdateProfileRequest(
     val username: String,
