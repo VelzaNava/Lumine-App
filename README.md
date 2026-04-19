@@ -26,13 +26,15 @@ Users can browse a jewelry catalog and virtually try on pieces (rings, necklaces
 ## Features
 
 - **AR Try-On** — real-time 3D jewelry overlay using hand and face tracking
+- **Adaptive landmark tracking** — earring position is calculated by blending tragus and jaw-angle landmarks to target the actual earlobe; necklace anchors sit proportionally below the chin on the neck; ring and bracelet scale with the actual finger and hand segment size in frame
 - **Jewelry Catalog** — browse and filter by category (rings, necklaces, earrings, bracelets)
+- **Product Detail** — item page with description, availability, and AR button that only shows when AR is enabled for that item
 - **Favorites** — save jewelry items for later
 - **User Profile** — edit name, phone, upload profile picture
 - **OTP Registration** — email verification before account creation
 - **Terms & Conditions** — must scroll to bottom before agreeing
 - **Evaluation System** — rate the AR try-on experience (1–5 stars) after each session
-- **Admin Panel** — manage jewelry catalog and user accounts
+- **Admin Panel** — jewelry CRUD with photo upload from phone storage, description field, per-item AR toggle, and user management
 
 ---
 
@@ -50,7 +52,7 @@ UnitySendMessage → JewelryTracker.cs (Unity)
 3D Jewelry Rendered on Screen
 ```
 
-The app also runs a 2D overlay (`AROverlayView`) in parallel as a lightweight fallback.
+The app also runs a 2D overlay (`AROverlayView`) in parallel as a lightweight indicator layer. All marker sizes and positions are face/hand-proportional so they adapt to any distance from the camera.
 
 ---
 
