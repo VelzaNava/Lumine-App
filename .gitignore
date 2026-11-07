@@ -17,6 +17,11 @@ local.properties
 # Unity-exported library — too large and auto-generated, rebuild via Unity export
 /unityLibrary/
 
+# Release signing — never commit the key or its passwords
+keystore.properties
+*.jks
+*.keystore
+
 # Windows artifacts
 Thumbs.db
 fix_after_unity_export.bat

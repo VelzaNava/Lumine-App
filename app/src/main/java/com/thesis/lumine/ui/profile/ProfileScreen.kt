@@ -1,8 +1,8 @@
 package com.thesis.lumine.ui.profile
 
-import android.Manifest
-import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +29,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -39,28 +46,34 @@ fun ProfileScreen(
     onViewFavorites: () -> Unit,
     onBackToCatalog: () -> Unit,
     onLogout: () -> Unit,
+    onAccountDeleted: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context        = LocalContext.current
     val sessionManager = remember { SessionManager(context) }
-    val profile        by viewModel.profile.collectAsState()
-    val isLoading      by viewModel.isLoading.collectAsState()
+    val profile            by viewModel.profile.collectAsState()
+    val isLoading          by viewModel.isLoading.collectAsState()
+    val isUploadingAvatar  by viewModel.isUploadingAvatar.collectAsState()
+    val error              by viewModel.error.collectAsState()
+    val isDeletingAccount  by viewModel.isDeletingAccount.collectAsState()
+    val deleteAccountError by viewModel.deleteAccountError.collectAsState()
+    var showDeleteDialog   by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.loadProfile() }
 
-    val imageLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
+    LaunchedEffect(error) {
+        error?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearError()
+        }
+    }
+
+    // Android's photo picker: no storage permission needed.
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
     ) { uri -> uri?.let { viewModel.uploadAvatar(it) } }
 
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-        Manifest.permission.READ_MEDIA_IMAGES
-    else
-        Manifest.permission.READ_EXTERNAL_STORAGE
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> if (granted) imageLauncher.launch("image/*") }
-
+    // Full-screen spinner only on the very first load; later refreshes happen in place.
     if (isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -78,7 +91,7 @@ fun ProfileScreen(
             .verticalScroll(rememberScrollState())
     ) {
 
-        // ── crimson banner header ─────────────────────────────────────────────
+        // Crimson banner header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -111,11 +124,13 @@ fun ProfileScreen(
                     .padding(top = 48.dp, bottom = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // avatar
+                // avatar - tap to choose a new photo
                 Box(
                     modifier = Modifier
                         .size(90.dp)
-                        .clickable { permissionLauncher.launch(permission) },
+                        .clickable(enabled = !isUploadingAvatar, onClickLabel = "Change photo") {
+                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     if (!profile.avatarUrl.isNullOrBlank()) {
@@ -141,6 +156,18 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
+                        }
+                    }
+
+                    if (isUploadingAvatar) {
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.45f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(Modifier.size(26.dp), color = Color.White, strokeWidth = 2.5.dp)
                         }
                     }
 
@@ -200,7 +227,7 @@ fun ProfileScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // ── Account section ───────────────────────────────────────────────────
+        // Account section
         Text(
             "ACCOUNT",
             style = MaterialTheme.typography.labelSmall,
@@ -268,7 +295,7 @@ fun ProfileScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        // ── logout ────────────────────────────────────────────────────────────
+        // Logout
         Button(
             onClick = onLogout,
             modifier = Modifier
@@ -280,13 +307,123 @@ fun ProfileScreen(
                 containerColor = Color(0xFFB71C1C)
             )
         ) {
-            Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Log Out", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
         }
 
+        // The server refuses to delete admin accounts, so don't offer it to them.
+        if (!sessionManager.isAdmin()) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = { showDeleteDialog = true },
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(
+                    "Delete account",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
     }
+
+    if (showDeleteDialog) {
+        DeleteAccountDialog(
+            isDeleting = isDeletingAccount,
+            error = deleteAccountError,
+            onPasswordChange = viewModel::clearDeleteAccountError,
+            onConfirm = { password ->
+                viewModel.deleteAccount(password) {
+                    showDeleteDialog = false
+                    Toast.makeText(context, "Your account has been deleted.", Toast.LENGTH_LONG).show()
+                    onAccountDeleted()
+                }
+            },
+            onDismiss = {
+                showDeleteDialog = false
+                viewModel.clearDeleteAccountError()
+            }
+        )
+    }
+}
+
+/** Asks for the password again before an account is deleted for good. */
+@Composable
+private fun DeleteAccountDialog(
+    isDeleting: Boolean,
+    error: String?,
+    onPasswordChange: () -> Unit,
+    onConfirm: (password: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password     by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+    val canConfirm = password.isNotEmpty() && !isDeleting
+
+    AlertDialog(
+        onDismissRequest = { if (!isDeleting) onDismiss() },
+        icon = {
+            Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+        },
+        title = { Text("Delete your account?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "This permanently deletes your account, profile, photo and favorites. " +
+                        "It can't be undone. Your ratings stay, but without your name.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        onPasswordChange()
+                    },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    enabled = !isDeleting,
+                    isError = error != null,
+                    supportingText = if (error != null) { { Text(error) } } else null,
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (canConfirm) onConfirm(password) }),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (showPassword) "Hide password" else "Show password"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(password) },
+                enabled = canConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                if (isDeleting) {
+                    CircularProgressIndicator(
+                        Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onError,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Delete account")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isDeleting) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

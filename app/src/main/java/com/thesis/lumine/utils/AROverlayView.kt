@@ -88,7 +88,7 @@ class AROverlayView(context: Context) : View(context) {
                 val faceHeight = (chin.y() - forehead.y()) * height
                 val faceWidth  = (rightEar.x() - leftEar.x()) * width
 
-                // necklace sits on the neck/collarbone — below the chin
+                // necklace sits on the neck/collarbone - below the chin
                 // drop = 18% of face height below the chin center
                 // side anchors = at ear X, 12% below ear Y
                 val neckDrop     = faceHeight * 0.18f
@@ -109,7 +109,7 @@ class AROverlayView(context: Context) : View(context) {
                 smoothedNeckRX = smooth(smoothedNeckRX, rightX)
                 smoothedNeckRY = smooth(smoothedNeckRY, rightY)
 
-                // chain stroke proportional to face width — small indicator
+                // chain stroke proportional to face width - small indicator
                 linePaint.strokeWidth = (faceWidth * 0.008f).coerceIn(2f, 5f)
                 val pendantR = (faceWidth * 0.015f).coerceIn(4f, 10f)
 
@@ -137,14 +137,14 @@ class AROverlayView(context: Context) : View(context) {
 
                 val faceWidth  = (rightTragus.x() - leftTragus.x()) * width
 
-                // earlobe X = tragus X (side of face — correct)
-                // earlobe Y = 45% tragus + 55% jaw-ear angle — lands right at the lobe
+                // earlobe X = tragus X (side of face - correct)
+                // earlobe Y = 45% tragus + 55% jaw-ear angle - lands right at the lobe
                 val leftX  = leftTragus.x() * width
                 val leftY  = (leftTragus.y() * 0.45f + leftJawEar.y() * 0.55f) * height
                 val rightX = rightTragus.x() * width
                 val rightY = (rightTragus.y() * 0.45f + rightJawEar.y() * 0.55f) * height
 
-                // small earring dot — just a tracking indicator
+                // small earring dot - just a tracking indicator
                 val earR   = (faceWidth * 0.03f).coerceIn(5f, 16f)
                 val hookW  = (faceWidth * 0.008f).coerceIn(1.5f, 4f)
                 val hookLen = earR * 1.2f
@@ -240,7 +240,7 @@ class AROverlayView(context: Context) : View(context) {
         }
     }
 
-    // exponential moving average — init on first frame
+    // exponential moving average - init on first frame
     private fun smooth(current: Float, target: Float): Float {
         return if (current == 0f) target
         else current + (target - current) * SMOOTH

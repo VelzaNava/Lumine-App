@@ -3,18 +3,19 @@ package com.thesis.lumine.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.thesis.lumine.data.api.errorMessage
+import com.thesis.lumine.data.api.toUserMessage
 import com.thesis.lumine.data.model.EvaluationRequest
 import com.thesis.lumine.data.model.EvaluationSummary
 import com.thesis.lumine.data.repository.JewelryRepository
-import com.thesis.lumine.utils.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** Try-on ratings: submitting one after AR, and the admin's per-item summary. */
 class EvaluationViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository     = JewelryRepository()
-    private val sessionManager = SessionManager(application.applicationContext)
+    private val repository = JewelryRepository()
 
     private val _submitted = MutableStateFlow(false)
     val submitted: StateFlow<Boolean> = _submitted
@@ -28,43 +29,61 @@ class EvaluationViewModel(application: Application) : AndroidViewModel(applicati
     private val _summaries = MutableStateFlow<List<EvaluationSummary>>(emptyList())
     val summaries: StateFlow<List<EvaluationSummary>> = _summaries
 
-    // i-submit yung rating ng user para sa jewelry na na-try on niya
+    /** Becomes true after the first summary load, so the tab can tell "loading" from "no ratings". */
+    private val _summaryLoaded = MutableStateFlow(false)
+    val summaryLoaded: StateFlow<Boolean> = _summaryLoaded
+
+    /** Rates an item as the signed-in user; a blank comment is sent as none. */
     fun submitRating(jewelryId: String, jewelryName: String, rating: Int, comment: String?) {
-        val userId = sessionManager.getUserId() ?: return
         viewModelScope.launch {
+            _isLoading.value = true
             try {
-                _isLoading.value = true
-                // i-build yung request object — blank comment treated as null
                 val request = EvaluationRequest(
-                    userId      = userId,
-                    jewelryId   = jewelryId,
+                    jewelryId = jewelryId,
                     jewelryName = jewelryName,
-                    rating      = rating,
-                    comment     = comment?.ifBlank { null }
+                    rating = rating,
+                    comment = comment?.ifBlank { null }
                 )
-                val resp = repository.submitEvaluation(request)
-                if (resp.isSuccessful) _submitted.value = true
-                else _error.value = "Failed to submit rating"
+                val response = repository.submitEvaluation(request)
+                if (response.isSuccessful) {
+                    _submitted.value = true
+                } else {
+                    _error.value = response.errorMessage("Couldn't submit your rating. Please try again.")
+                }
             } catch (e: Exception) {
-                _error.value = e.message
+                _error.value = e.toUserMessage()
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    // kunin yung aggregated rating summaries para sa admin dashboard
+    /** Admin only: average rating per item. */
     fun loadSummary() {
         viewModelScope.launch {
+            _error.value = null
             try {
-                val resp = repository.getEvaluationSummary()
-                if (resp.isSuccessful && resp.body() != null)
-                    _summaries.value = resp.body()!!
-            } catch (_: Exception) {}
+                val response = repository.getEvaluationSummary()
+                val body = response.body()
+                if (response.isSuccessful && body != null) {
+                    _summaries.value = body
+                } else {
+                    _error.value = response.errorMessage("Couldn't load the ratings.")
+                }
+            } catch (e: Exception) {
+                _error.value = e.toUserMessage()
+            } finally {
+                _summaryLoaded.value = true
+            }
         }
     }
 
-    // i-reset yung submitted flag para hindi mag-trigger ulit ang back navigation
-    fun resetSubmitted() { _submitted.value = false }
-    fun clearError()     { _error.value = null }
+    /** Clears the flag so returning to the AR screen doesn't navigate away again. */
+    fun resetSubmitted() {
+        _submitted.value = false
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
 }

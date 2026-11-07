@@ -9,9 +9,6 @@ data class UserProfileResponse(
     val avatarUrl: String? = null
 )
 
-data class AvatarResponse(val avatarUrl: String)
-data class ImageUploadResponse(val imageUrl: String)
-
 data class UpdateProfileRequest(
     val username: String,
     val firstName: String,
@@ -19,8 +16,12 @@ data class UpdateProfileRequest(
     val mobileNumber: String?
 )
 
+data class AvatarResponse(val avatarUrl: String)
+
+data class ImageUploadResponse(val imageUrl: String)
+
+/** A try-on rating. The server records it for the signed-in user. */
 data class EvaluationRequest(
-    val userId: String,
     val jewelryId: String,
     val jewelryName: String,
     val rating: Int,
@@ -40,5 +41,6 @@ data class AdminUserInfo(
     val username: String,
     val firstName: String,
     val lastName: String,
-    val mobileNumber: String?
+    val mobileNumber: String?,
+    val avatarUrl: String? = null
 )

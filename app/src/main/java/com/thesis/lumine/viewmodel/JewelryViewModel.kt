@@ -4,15 +4,22 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.thesis.lumine.data.api.errorMessage
+import com.thesis.lumine.data.api.toUserMessage
 import com.thesis.lumine.data.model.Jewelry
 import com.thesis.lumine.data.repository.JewelryRepository
+import com.thesis.lumine.utils.ImageCompressor
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.withContext
 
+/**
+ * The jewelry catalog, shared by the customer screens and the admin panel.
+ * Changes are applied to the in-memory list as soon as the server confirms
+ * them, so lists update instantly without a reload or a spinner.
+ */
 class JewelryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = JewelryRepository()
@@ -20,141 +27,142 @@ class JewelryViewModel(application: Application) : AndroidViewModel(application)
     private val _jewelryList = MutableStateFlow<List<Jewelry>>(emptyList())
     val jewelryList: StateFlow<List<Jewelry>> = _jewelryList
 
+    /**
+     * True only while there is nothing on screen yet (first load, or after an
+     * error left the list empty). Refreshing a populated list never sets it,
+     * which is what keeps screens from flashing blank on every refresh.
+     */
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
+
+    /** True while a create/update/delete is in flight - for disabling that dialog's buttons. */
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving: StateFlow<Boolean> = _isSaving
+
+    private val _isUploading = MutableStateFlow(false)
+    val isUploading: StateFlow<Boolean> = _isUploading
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    /** One-shot confirmation text for a snackbar after a successful change. */
     private val _crudSuccess = MutableStateFlow<String?>(null)
     val crudSuccess: StateFlow<String?> = _crudSuccess
-
-    private val _isUploading = MutableStateFlow(false)
-    val isUploading: StateFlow<Boolean> = _isUploading
 
     init {
         loadJewelry()
     }
 
+    /** Loads the catalog; a populated list refreshes silently in the background. */
     fun loadJewelry() {
         viewModelScope.launch {
+            val firstLoad = _jewelryList.value.isEmpty()
+            if (firstLoad) _isLoading.value = true
+            _error.value = null
             try {
-                _isLoading.value = true
-                _error.value = null
                 val response = repository.getAllJewelry()
-                if (response.isSuccessful && response.body() != null) {
-                    _jewelryList.value = response.body()!!
+                val body = response.body()
+                if (response.isSuccessful && body != null) {
+                    _jewelryList.value = body
                 } else {
-                    _error.value = "Failed to load jewelry"
+                    _error.value = response.errorMessage("Couldn't load the catalog.")
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Network error"
+                _error.value = e.toUserMessage()
             } finally {
-                _isLoading.value = false
+                if (firstLoad) _isLoading.value = false
             }
         }
     }
 
-    fun filterByType(type: String) {
-        viewModelScope.launch {
-            try {
-                val response = repository.getAllJewelry()
-                if (response.isSuccessful && response.body() != null) {
-                    _jewelryList.value = response.body()!!.filter {
-                        it.type.equals(type, ignoreCase = true)
-                    }
-                }
-            } catch (e: Exception) {
-                _error.value = e.message
-            }
-        }
-    }
-
+    /** Adds the server's copy (real id and timestamp) to the list - no refetch. */
     fun createJewelry(jewelry: Jewelry, onDone: () -> Unit) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val response = repository.createJewelry(jewelry)
-                if (response.isSuccessful) {
-                    _crudSuccess.value = "${jewelry.name} added successfully."
-                    loadJewelry()
-                    onDone()
-                } else {
-                    _error.value = "Failed to add jewelry"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Network error"
-            } finally {
-                _isLoading.value = false
+        runSaving {
+            val response = repository.createJewelry(jewelry)
+            val created = response.body()
+            if (response.isSuccessful && created != null) {
+                _jewelryList.value = _jewelryList.value + created
+                _crudSuccess.value = "${jewelry.name} added."
+                onDone()
+            } else {
+                _error.value = response.errorMessage("Couldn't add the item. Please try again.")
             }
         }
     }
 
+    /** Swaps just the edited entry, so the list and its scroll position stay put. */
     fun updateJewelry(id: String, jewelry: Jewelry, onDone: () -> Unit) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val response = repository.updateJewelry(id, jewelry)
-                if (response.isSuccessful) {
-                    _crudSuccess.value = "${jewelry.name} updated successfully."
-                    loadJewelry()
-                    onDone()
-                } else {
-                    _error.value = "Failed to update jewelry"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Network error"
-            } finally {
-                _isLoading.value = false
+        runSaving {
+            val response = repository.updateJewelry(id, jewelry)
+            val updated = response.body()
+            if (response.isSuccessful && updated != null) {
+                _jewelryList.value = _jewelryList.value.map { if (it.id == id) updated else it }
+                _crudSuccess.value = "${jewelry.name} updated."
+                onDone()
+            } else {
+                _error.value = response.errorMessage("Couldn't save the changes. Please try again.")
             }
         }
     }
 
     fun deleteJewelry(id: String, onDone: () -> Unit) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val response = repository.deleteJewelry(id)
-                if (response.isSuccessful) {
-                    _crudSuccess.value = "Item deleted."
-                    loadJewelry()
-                    onDone()
-                } else {
-                    _error.value = "Failed to delete jewelry"
-                }
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Network error"
-            } finally {
-                _isLoading.value = false
+        runSaving {
+            val response = repository.deleteJewelry(id)
+            if (response.isSuccessful) {
+                _jewelryList.value = _jewelryList.value.filterNot { it.id == id }
+                _crudSuccess.value = "Item deleted."
+                onDone()
+            } else {
+                _error.value = response.errorMessage("Couldn't delete the item. Please try again.")
             }
         }
     }
 
-    // i-pick yung image galing sa phone storage tapos i-upload sa backend
+    /** Compresses the picked photo off the main thread, uploads it and returns its URL. */
     fun uploadJewelryImage(uri: Uri, onSuccess: (String) -> Unit) {
         viewModelScope.launch {
+            _isUploading.value = true
             try {
-                _isUploading.value = true
                 val context = getApplication<Application>().applicationContext
-                val inputStream = context.contentResolver.openInputStream(uri) ?: return@launch
-                val bytes = inputStream.readBytes()
-                inputStream.close()
-                val requestBody = bytes.toRequestBody("image/*".toMediaType())
-                val part = MultipartBody.Part.createFormData("file", "jewelry.jpg", requestBody)
-                val resp = repository.uploadJewelryImage(part)
-                if (resp.isSuccessful && resp.body() != null) {
-                    onSuccess(resp.body()!!.imageUrl)
+                val part = withContext(Dispatchers.IO) { ImageCompressor.toUploadPart(context, uri, "jewelry") }
+                if (part == null) {
+                    _error.value = "That photo couldn't be read. Please choose another one."
+                    return@launch
+                }
+
+                val response = repository.uploadJewelryImage(part)
+                val body = response.body()
+                if (response.isSuccessful && body != null) {
+                    onSuccess(body.imageUrl)
                 } else {
-                    _error.value = "Failed to upload image"
+                    _error.value = response.errorMessage("Couldn't upload the photo. Please try again.")
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Upload failed"
+                _error.value = e.toUserMessage()
             } finally {
                 _isUploading.value = false
             }
         }
     }
 
-    fun clearCrudSuccess() { _crudSuccess.value = null }
-    fun clearError()       { _error.value = null }
+    fun clearCrudSuccess() {
+        _crudSuccess.value = null
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
+
+    private fun runSaving(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            try {
+                block()
+            } catch (e: Exception) {
+                _error.value = e.toUserMessage()
+            } finally {
+                _isSaving.value = false
+            }
+        }
+    }
 }

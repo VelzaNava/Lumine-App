@@ -1,6 +1,7 @@
 package com.thesis.lumine.utils
 
 import android.content.Context
+import android.util.Log
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -37,17 +38,19 @@ class MediaPipeHelper(context: Context) {
                     onFaceDetected?.invoke(result)
                 }
                 .setErrorListener { error ->
-                    error.printStackTrace()
+                    Log.e(MEDIAPIPE_TAG, "Face tracking failed", error)
                 }
                 .setNumFaces(1)
-                .setMinFaceDetectionConfidence(0.6f)
-                .setMinFacePresenceConfidence(0.6f)
-                .setMinTrackingConfidence(0.6f)
+                // 0.5 rather than 0.3: lower values found "faces" in clothing and wallpaper
+                // patterns, which kept the necklace and earrings on screen.
+                .setMinFaceDetectionConfidence(0.5f)
+                .setMinFacePresenceConfidence(0.5f)
+                .setMinTrackingConfidence(0.5f)
                 .build()
 
             faceLandmarker = FaceLandmarker.createFromOptions(applicationContext, options)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(MEDIAPIPE_TAG, "Couldn't load the face tracking model", e)
         }
     }
 
@@ -64,21 +67,20 @@ class MediaPipeHelper(context: Context) {
                     onHandDetected?.invoke(result)
                 }
                 .setErrorListener { error ->
-                    error.printStackTrace()
+                    Log.e(MEDIAPIPE_TAG, "Hand tracking failed", error)
                 }
-                // 1 hand lang kasi single-hand ang ring try-on — 2 hands = doble ang CPU cost
+                // One hand only: try-on uses a single hand, and tracking two doubles the CPU cost.
                 .setNumHands(1)
-                // mas mataas = mas kaunting false detections = hindi masyadong mag-jitter yung ring
-                .setMinHandDetectionConfidence(0.7f)
-                // mag-update lang ng landmarks pag clearly present yung kamay — para hindi matog-tog
-                .setMinHandPresenceConfidence(0.7f)
-                // hawakan ng MediaPipe yung track nang mas matagal bago sabihing "nawala" — smoother ring
-                .setMinTrackingConfidence(0.6f)
+                // 0.5 for the same reason: at 0.3 the ring and bracelet stayed on screen after
+                // the hand left the frame.
+                .setMinHandDetectionConfidence(0.5f)
+                .setMinHandPresenceConfidence(0.5f)
+                .setMinTrackingConfidence(0.5f)
                 .build()
 
             handLandmarker = HandLandmarker.createFromOptions(applicationContext, options)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(MEDIAPIPE_TAG, "Couldn't load the hand tracking model", e)
         }
     }
 
@@ -95,3 +97,5 @@ class MediaPipeHelper(context: Context) {
         handLandmarker?.close()
     }
 }
+
+private const val MEDIAPIPE_TAG = "MediaPipeHelper"

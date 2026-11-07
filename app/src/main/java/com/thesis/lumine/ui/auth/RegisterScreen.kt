@@ -5,17 +5,22 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -44,10 +49,32 @@ fun RegisterScreen(
     var termsScrolledThrough by remember { mutableStateOf(false) }
     var showTerms        by remember { mutableStateOf(false) }
 
-    val authState by viewModel.authState.collectAsState()
+    var codeRequested        by rememberSaveable { mutableStateOf(false) }
 
+    val authState by viewModel.authState.collectAsState()
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) { viewModel.resetTransientState() }
+
+    // Move on only after this screen's request succeeds, never on a leftover state.
     LaunchedEffect(authState) {
-        if (authState is AuthState.OtpSent) onOtpSent()
+        if (codeRequested && authState is AuthState.OtpSent) {
+            codeRequested = false
+            onOtpSent()
+        }
+    }
+
+    fun submit() {
+        if (email.isBlank() || password.isBlank() || confirmPassword.isBlank() || authState is AuthState.Loading) return
+        localError = when {
+            password != confirmPassword -> "Passwords do not match."
+            !termsAccepted              -> "You must agree to the Terms and Conditions."
+            else                        -> null
+        }
+        if (localError == null) {
+            codeRequested = true
+            viewModel.initRegisterOtp(email, password)
+        }
     }
 
     if (showTerms) {
@@ -78,7 +105,7 @@ fun RegisterScreen(
         ) {
             Spacer(Modifier.height(40.dp))
 
-            // ── branding header ──────────────────────────────────────
+            // Branding header
             Text(
                 text = "LUMINE",
                 fontSize = 32.sp,
@@ -96,7 +123,7 @@ fun RegisterScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── form card ────────────────────────────────────────────
+            // Form card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -113,7 +140,7 @@ fun RegisterScreen(
                     // email
                     OutlinedTextField(
                         value = email,
-                        onValueChange = { email = it; localError = null },
+                        onValueChange = { email = it; localError = null; viewModel.clearError() },
                         label = { Text("Email Address") },
                         placeholder = { Text("e.g. yourname@gmail.com") },
                         leadingIcon = {
@@ -122,7 +149,8 @@ fun RegisterScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                         isError = localError != null || authState is AuthState.Error,
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -130,7 +158,7 @@ fun RegisterScreen(
                     // password
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it; localError = null },
+                        onValueChange = { password = it; localError = null; viewModel.clearError() },
                         label = { Text("Password") },
                         placeholder = { Text("Min. 8 characters") },
                         leadingIcon = {
@@ -141,7 +169,8 @@ fun RegisterScreen(
                         singleLine = true,
                         visualTransformation = if (passwordVisible) VisualTransformation.None
                                                else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                         trailingIcon = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
@@ -168,7 +197,8 @@ fun RegisterScreen(
                         singleLine = true,
                         visualTransformation = if (confirmVisible) VisualTransformation.None
                                                else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                         trailingIcon = {
                             IconButton(onClick = { confirmVisible = !confirmVisible }) {
                                 Icon(
@@ -186,7 +216,7 @@ fun RegisterScreen(
 
             Spacer(Modifier.height(10.dp))
 
-            // ── terms and conditions section ─────────────────────────
+            // Terms and conditions section
             TermsSection(
                 termsRead     = termsScrolledThrough,
                 termsAccepted = termsAccepted,
@@ -196,17 +226,9 @@ fun RegisterScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── submit button ────────────────────────────────────────
+            // Submit button
             Button(
-                onClick = {
-                    localError = when {
-                        email.isBlank()                -> "Email address is required."
-                        password != confirmPassword    -> "Passwords do not match."
-                        !termsAccepted                 -> "You must agree to the Terms and Conditions."
-                        else                           -> null
-                    }
-                    if (localError == null) viewModel.initRegisterOtp(email, password)
-                },
+                onClick = ::submit,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
@@ -232,32 +254,14 @@ fun RegisterScreen(
             }
 
             // error message
-            val errorMessage = localError ?: (authState as? AuthState.Error)?.message
-            if (errorMessage != null) {
+            (localError ?: (authState as? AuthState.Error)?.message)?.let {
                 Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Filled.ErrorOutline, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.size(16.dp))
-                    Text(
-                        text = errorMessage,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                AuthErrorBanner(it)
             }
 
             Spacer(Modifier.height(12.dp))
 
-            // ── login redirect ───────────────────────────────────────
+            // Login redirect
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -276,7 +280,7 @@ fun RegisterScreen(
     }
 }
 
-// ── Terms section composable ──────────────────────────────────────────────────
+// Terms section composable
 @Composable
 private fun TermsSection(
     termsRead: Boolean,
@@ -334,7 +338,7 @@ private fun TermsSection(
             }
         }
 
-        // agree checkbox — only enabled after reading
+        // agree checkbox - only enabled after reading
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
@@ -376,7 +380,7 @@ private fun TermsSection(
     }
 }
 
-// ── Terms dialog ──────────────────────────────────────────────────────────────
+// Terms dialog
 @Composable
 fun TermsAndConditionsDialog(
     onAccept: () -> Unit,
@@ -449,11 +453,11 @@ fun TermsAndConditionsDialog(
                     TermsSection("5. VIRTUAL TRY-ON DISCLAIMER",
                         "The AR jewelry visualization provided by this App is an approximation for reference purposes only. Colors, sizes, proportions, and overall appearance may differ from actual physical jewelry items. Lumine makes no warranty or representation that virtual try-on results will be identical to physical products.")
                     TermsSection("6. INTELLECTUAL PROPERTY",
-                        "All content, features, and functionality of the App — including but not limited to software, text, images, 3D models, graphics, logos, and jewelry designs — are the exclusive intellectual property of Lumine and its licensors, and are protected by applicable intellectual property laws. Unauthorized reproduction, distribution, or modification is strictly prohibited.")
+                        "All content, features, and functionality of the App, including but not limited to software, text, images, 3D models, graphics, logos, and jewelry designs, are the exclusive intellectual property of Lumine and its licensors, and are protected by applicable intellectual property laws. Unauthorized reproduction, distribution, or modification is strictly prohibited.")
                     TermsSection("7. PROHIBITED USES",
                         "You agree not to: (a) use the App for any unlawful or fraudulent purpose; (b) attempt to gain unauthorized access to any system or data; (c) reproduce, copy, sell, or exploit any part of the App without written permission; (d) transmit harmful, offensive, or disruptive content; (e) reverse-engineer, decompile, or disassemble the App or its components.")
                     TermsSection("8. PRIVACY POLICY",
-                        "Your privacy is important to us. Personal information collected during registration — including your email address — is used solely for account management and service delivery purposes. We do not sell, rent, or share your personal information with third parties without your explicit consent, except as required by applicable law.")
+                        "Your privacy is important to us. Personal information collected during registration, including your email address, is used solely for account management and service delivery purposes. We do not sell, rent, or share your personal information with third parties without your explicit consent, except as required by applicable law.")
                     TermsSection("9. LIMITATION OF LIABILITY",
                         "The App is provided on an \"as is\" and \"as available\" basis without warranties of any kind, either express or implied. Lumine shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising from or related to your use of or inability to use the App.")
                     TermsSection("10. MODIFICATIONS TO TERMS",

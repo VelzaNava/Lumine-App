@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Facebook "f" logo — official circular mark, used here as a "find us on
+  Facebook" link to the shop's own Page. Two-tone (brand-blue circle + white
+  cutout), so this must be rendered with Image()/painterResource, NOT Icon()
+  with a tint — Icon() would force it to a flat single-color silhouette and
+  destroy the cutout.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#1877F2"
+        android:pathData="M24,12C24,5.373 18.627,0 12,0C5.373,0 0,5.373 0,12C0,17.989 4.388,22.954 10.125,23.854V15.47H7.078V12H10.125V9.356C10.125,6.349 11.917,4.688 14.658,4.688C15.97,4.688 17.344,4.922 17.344,4.922V7.875H15.831C14.34,7.875 13.875,8.8 13.875,9.75V12H17.203L16.671,15.47H13.875V23.854C19.612,22.954 24,17.989 24,12Z" />
+</vector>

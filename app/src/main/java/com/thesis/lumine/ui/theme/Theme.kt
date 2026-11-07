@@ -1,6 +1,7 @@
 package com.thesis.lumine.ui.theme
 
 import android.app.Activity
+import android.view.Window
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -10,7 +11,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// ── Light colour scheme — crimson primary, gold secondary ────────────────────
+// Light colour scheme - crimson primary, gold secondary
 private val LightColorScheme = lightColorScheme(
     primary               = Crimson40,
     onPrimary             = Color.White,
@@ -42,9 +43,9 @@ private val LightColorScheme = lightColorScheme(
     inversePrimary        = Gold80,
 )
 
-// ── Dark colour scheme ────────────────────────────────────────────────────────
+// Dark colour scheme
 private val DarkColorScheme = darkColorScheme(
-    primary               = Gold80,       // rich antique gold on dark — no more pink
+    primary               = Gold80,       // antique gold on dark
     onPrimary             = Gold10,
     primaryContainer      = Crimson40,    // deep maroon container
     onPrimaryContainer    = Crimson90,
@@ -79,14 +80,14 @@ fun LumineAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    // Dynamic color disabled — use the JRP-inspired brand palette instead
+    // Dynamic color disabled - use the JRP-inspired brand palette instead
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
+            window.paintStatusBar(colorScheme.primary.toArgb())
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
@@ -96,4 +97,10 @@ fun LumineAppTheme(
         typography  = Typography,
         content     = content
     )
+}
+
+// Android 15+ draws apps behind the status bar and ignores this; it still colours the bar on 14 and older.
+@Suppress("DEPRECATION")
+private fun Window.paintStatusBar(color: Int) {
+    statusBarColor = color
 }
