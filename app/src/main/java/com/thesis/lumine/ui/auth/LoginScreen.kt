@@ -1,21 +1,27 @@
 package com.thesis.lumine.ui.auth
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -23,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.thesis.lumine.R
 import com.thesis.lumine.viewmodel.AuthState
 import com.thesis.lumine.viewmodel.AuthViewModel
 
@@ -30,6 +37,7 @@ import com.thesis.lumine.viewmodel.AuthViewModel
 fun LoginScreen(
     onLoginSuccess: (isAdmin: Boolean) -> Unit,
     onNavigateToRegister: () -> Unit,
+    onForgotPassword: () -> Unit = {},
     viewModel: AuthViewModel = viewModel()
 ) {
     var email           by remember { mutableStateOf("") }
@@ -37,11 +45,22 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
 
     val authState by viewModel.authState.collectAsState()
+    val waitSeconds by viewModel.loginWaitSeconds.collectAsState()
+    val isLoading = authState is AuthState.Loading
+    val focusManager = LocalFocusManager.current
+
+    LaunchedEffect(Unit) { viewModel.resetTransientState() }
 
     LaunchedEffect(authState) {
         if (authState is AuthState.Success) {
             onLoginSuccess((authState as AuthState.Success).authResponse.isAdmin)
         }
+    }
+
+    fun logIn() {
+        if (email.isBlank() || password.isBlank() || isLoading || waitSeconds > 0) return
+        focusManager.clearFocus()
+        viewModel.login(email, password)
     }
 
     Box(
@@ -63,7 +82,7 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── crimson header banner — white LUMINE + gem ────────────────────
+            // Crimson header banner - white LUMINE + gem
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -79,30 +98,19 @@ fun LoginScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Diamond,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "LUMINE",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            letterSpacing = 4.sp
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
+                    // Brand logo - the L-diamond mark replaces the old
+                    // Material Diamond icon + LUMINE wordmark
+                    Image(
+                        painter = painterResource(id = R.drawable.lumine_logo),
+                        contentDescription = "Lumine logo",
+                        modifier = Modifier.size(120.dp)
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         text = "AR Jewelry Try-On",
                         fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.75f)
+                        color = Color.White.copy(alpha = 0.85f),
+                        letterSpacing = 2.sp
                     )
                 }
             }
@@ -121,7 +129,7 @@ fun LoginScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── form card ─────────────────────────────────────────────────────
+            // Form card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -141,7 +149,7 @@ fun LoginScreen(
 
                     OutlinedTextField(
                         value = email,
-                        onValueChange = { email = it },
+                        onValueChange = { email = it; viewModel.clearError() },
                         label = { Text("Email Address") },
                         leadingIcon = {
                             Icon(Icons.Filled.Email, contentDescription = null,
@@ -149,14 +157,15 @@ fun LoginScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
                         isError = authState is AuthState.Error,
                         shape = RoundedCornerShape(12.dp)
                     )
 
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = { password = it; viewModel.clearError() },
                         label = { Text("Password") },
                         leadingIcon = {
                             Icon(Icons.Filled.Lock, contentDescription = null,
@@ -166,13 +175,14 @@ fun LoginScreen(
                         singleLine = true,
                         visualTransformation = if (passwordVisible) VisualTransformation.None
                                                else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { logIn() }),
                         trailingIcon = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
                                     imageVector = if (passwordVisible) Icons.Filled.Visibility
                                                   else Icons.Filled.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "Hide" else "Show"
+                                    contentDescription = if (passwordVisible) "Hide password" else "Show password"
                                 )
                             }
                         },
@@ -182,61 +192,78 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            // Forgot password - the same link for customers and admins
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onForgotPassword) {
+                    Text(
+                        "Forgot Password?",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
 
-            // ── login button ──────────────────────────────────────────────────
+            Spacer(Modifier.height(6.dp))
+
+            // Login button
             Button(
-                onClick = { viewModel.login(email, password) },
+                onClick = ::logIn,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = RoundedCornerShape(14.dp),
-                enabled = email.isNotBlank() && password.isNotBlank()
-                          && authState !is AuthState.Loading,
+                enabled = email.isNotBlank() && password.isNotBlank() && !isLoading && waitSeconds == 0,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
-                if (authState is AuthState.Loading) {
-                    CircularProgressIndicator(
+                when {
+                    isLoading -> CircularProgressIndicator(
                         Modifier.size(22.dp),
                         color = MaterialTheme.colorScheme.onPrimary,
                         strokeWidth = 2.5.dp
                     )
-                } else {
-                    Icon(Icons.Filled.Login, contentDescription = null,
-                        modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Log In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    waitSeconds > 0 -> {
+                        Icon(Icons.Filled.HourglassTop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Try again in ${waitSeconds}s", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    else -> {
+                        Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Log In", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 
-            // ── error banner ──────────────────────────────────────────────────
-            if (authState is AuthState.Error) {
+            // Error banner
+            (authState as? AuthState.Error)?.let {
                 Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.errorContainer)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Filled.ErrorOutline, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.size(16.dp))
+                AuthErrorBanner(it.message)
+            }
+
+            // After a wrong password, offer the reset right where the user is looking.
+            if (waitSeconds > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = (authState as AuthState.Error).message,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodySmall
+                        "Forgot your password?",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    TextButton(onClick = onForgotPassword) {
+                        Text("Reset it", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // ── sign up redirect ──────────────────────────────────────────────
+            // Sign up redirect
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(8.dp))
 

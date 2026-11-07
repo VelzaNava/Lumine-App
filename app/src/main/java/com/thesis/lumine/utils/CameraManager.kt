@@ -3,6 +3,7 @@ package com.thesis.lumine.utils
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.util.Log
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -39,7 +40,7 @@ class CameraManager(
         }, ContextCompat.getMainExecutor(context))
     }
 
-    // i-toggle ang front/back camera tapos i-rebind
+    // Switch between the front and back camera, then rebind.
     fun switchCamera() {
         useFrontCamera = !useFrontCamera
         onCameraFacingChanged?.invoke(useFrontCamera)
@@ -56,7 +57,7 @@ class CameraManager(
         val imageAnalysis = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-            .setTargetResolution(android.util.Size(480, 360))
+            .analysisSize(android.util.Size(480, 360))
             .build()
             .also {
                 it.setAnalyzer(cameraExecutor) { imageProxy -> processFrame(imageProxy) }
@@ -76,7 +77,7 @@ class CameraManager(
                 imageAnalysis
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(CAMERA_TAG, "Couldn't start the camera", e)
         }
     }
 
@@ -91,11 +92,11 @@ class CameraManager(
 
             val bitmap = imageProxy.toBitmap()
 
-            // kailangan i-rotate at optionally i-mirror ang bitmap bago i-feed sa MediaPipe
+            // Rotate (and for the front camera, mirror) each frame before handing it to MediaPipe.
             val rotationDegrees = imageProxy.imageInfo.rotationDegrees
             val matrix = Matrix().apply {
                 postRotate(rotationDegrees.toFloat())
-                // front camera only: mirror para mag-match sa selfie preview ng CameraX
+                // Front camera only: mirror to match CameraX's selfie preview.
                 if (useFrontCamera) {
                     val rotatedWidth = if (rotationDegrees % 180 != 0) bitmap.height.toFloat()
                                        else bitmap.width.toFloat()
@@ -113,7 +114,7 @@ class CameraManager(
 
             onFrameAvailable?.invoke(mpImage, timestamp)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(CAMERA_TAG, "Couldn't convert a camera frame", e)
         } finally {
             imageProxy.close()
         }
@@ -124,3 +125,11 @@ class CameraManager(
         cameraExecutor.shutdown()
     }
 }
+
+private const val CAMERA_TAG = "CameraManager"
+
+// The AR placement was tuned against frames picked by this (deprecated) call; the
+// newer ResolutionSelector chooses sizes differently, which would shift the jewelry.
+@Suppress("DEPRECATION")
+private fun ImageAnalysis.Builder.analysisSize(size: android.util.Size): ImageAnalysis.Builder =
+    setTargetResolution(size)

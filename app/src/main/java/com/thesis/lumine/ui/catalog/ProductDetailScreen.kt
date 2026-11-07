@@ -22,10 +22,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.thesis.lumine.utils.formatPeso
 import com.thesis.lumine.data.model.Jewelry
+import com.thesis.lumine.ui.components.PhotoPager
 
-// product detail screen — ipakita yung full details ng isang jewelry item
+/** Full details of one item: photos, price, description, favorite and AR try-on. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductDetailScreen(
@@ -33,7 +34,11 @@ fun ProductDetailScreen(
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onTryOn: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    // Admin opens this page from a customer's saved favorites: no AR try-on,
+    // and no heart - it would toggle the ADMIN's own favorites, not the customer's.
+    showTryOn: Boolean = true,
+    showFavorite: Boolean = true
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -67,37 +72,20 @@ fun ProductDetailScreen(
                 .verticalScroll(rememberScrollState())
         ) {
 
-            // ── product image + favorite overlay ─────────────────────────────
+            // Product photos (swipeable when there are several) + favorite
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(300.dp)
             ) {
-                if (!jewelry.imageUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model              = jewelry.imageUrl,
-                        contentDescription = jewelry.name,
-                        modifier           = Modifier.fillMaxSize(),
-                        contentScale       = ContentScale.Crop
-                    )
-                } else {
-                    // placeholder pag walang image
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Diamond,
-                            contentDescription = null,
-                            modifier = Modifier.size(72.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
+                PhotoPager(
+                    photos = jewelry.photos,
+                    contentDescription = jewelry.name,
+                    modifier = Modifier.fillMaxSize(),
+                    iconSize = 72.dp
+                )
 
-                // gradient fade sa ibaba ng image para readable yung content sa baba
+                // fade at the bottom so the details below read cleanly over any photo
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -113,9 +101,8 @@ fun ProductDetailScreen(
                         )
                 )
 
-                // favorite button — top-right of image, safe from accidental press
-                // placed at top-right with padding para hindi madaling ma-tap ng aksidente
-                Box(
+                // favorite button - top-right, away from where thumbs rest, so it isn't tapped by accident
+                if (showFavorite) Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(12.dp)
@@ -140,7 +127,7 @@ fun ProductDetailScreen(
                 }
             }
 
-            // ── product details ───────────────────────────────────────────────
+            // Product details
             Column(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -192,7 +179,7 @@ fun ProductDetailScreen(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "₱${String.format("%.2f", jewelry.price)}",
+                        text = formatPeso(jewelry.price),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.primary,
@@ -214,8 +201,8 @@ fun ProductDetailScreen(
                     DetailRow(label = "Type",     value = jewelry.type.replaceFirstChar { it.uppercase() })
                     DetailRow(
                         label = "Availability",
-                        value = if (jewelry.isAvailable) "In Stock" else "Out of Stock",
-                        valueColor = if (jewelry.isAvailable)
+                        value = if (jewelry.inStock) "In Stock" else "Out of Stock",
+                        valueColor = if (jewelry.inStock)
                             Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
                     )
                 }
@@ -240,7 +227,7 @@ fun ProductDetailScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                if (jewelry.isArEnabled) {
+                if (showTryOn && jewelry.isArReady) {
                     // AR try-on info banner
                     Row(
                         modifier = Modifier
@@ -272,7 +259,7 @@ fun ProductDetailScreen(
                         }
                     }
 
-                    // Try-On button — only shown when AR is enabled for this item
+                    // Try-On button - only shown when AR is enabled for this item
                     Button(
                         onClick = onTryOn,
                         modifier = Modifier
@@ -295,6 +282,29 @@ fun ProductDetailScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                } else if (showTryOn) {
+                    // Say so, rather than leaving customers to wonder where the button went.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.ViewInAr,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            "AR try-on isn't available for this item yet.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -303,7 +313,7 @@ fun ProductDetailScreen(
     }
 }
 
-// helper row para sa product details key-value pairs
+// One label/value line in the product details list.
 @Composable
 private fun DetailRow(
     label: String,

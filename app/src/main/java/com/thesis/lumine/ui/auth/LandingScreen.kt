@@ -10,7 +10,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// landing screen — unang screen na makikita ng user, dalawang buttons lang
+// Landing screen - the first screen a signed-out user sees: log in or sign up.
 @Composable
 fun LandingScreen(
     onLoginClick: () -> Unit,
@@ -52,7 +52,7 @@ fun LandingScreen(
 
         Spacer(Modifier.height(80.dp))
 
-        // login button — pangunahing action
+        // login button - pangunahing action
         Button(
             onClick = onLoginClick,
             modifier = Modifier
@@ -64,7 +64,7 @@ fun LandingScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // sign up button — outlined para magmukhang secondary
+        // sign up button - outlined para magmukhang secondary
         OutlinedButton(
             onClick = onSignUpClick,
             modifier = Modifier

@@ -1,5 +1,8 @@
 package com.thesis.lumine.ui.catalog
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,19 +22,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import com.thesis.lumine.utils.formatPeso
+import com.thesis.lumine.R
 import com.thesis.lumine.data.model.Jewelry
+import com.thesis.lumine.ui.components.EmptyState
+import com.thesis.lumine.ui.components.ErrorState
+import com.thesis.lumine.ui.components.JewelryGridSkeleton
+import com.thesis.lumine.ui.components.JewelryImage
 import com.thesis.lumine.viewmodel.JewelryViewModel
 import com.thesis.lumine.viewmodel.ProfileViewModel
 
-// catalog screen — 2-column grid na may search at category filter
+// The shop's own Facebook Page - the "f" icon in the catalog header links here.
+private const val FACEBOOK_PAGE_URL = "https://www.facebook.com/jrjewelryshop"
+
+private val CATEGORIES = listOf("All", "Ring", "Necklace", "Earring", "Bracelet")
+
+/** The customer home screen: a searchable, filterable 2-column catalog grid. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CatalogScreen(
@@ -44,23 +58,36 @@ fun CatalogScreen(
     val jewelryList  by viewModel.jewelryList.collectAsState()
     val isLoading    by viewModel.isLoading.collectAsState()
     val error        by viewModel.error.collectAsState()
+    val context      = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) { profileViewModel.loadFavorites() }
 
-    val categories = listOf("All", "Ring", "Necklace", "Earring", "Bracelet")
     var selectedCategory by remember { mutableStateOf("All") }
     var searchQuery      by remember { mutableStateOf("") }
 
-    // i-filter yung list base sa search text
-    val displayList = if (searchQuery.isBlank()) jewelryList
-    else jewelryList.filter {
-        it.name.contains(searchQuery, ignoreCase = true) ||
-        it.type.contains(searchQuery, ignoreCase = true) ||
-        it.material.contains(searchQuery, ignoreCase = true)
+    // Category and search both filter the already-loaded catalog: instant, no network round trip.
+    val displayList = jewelryList
+        .filter { selectedCategory == "All" || it.type.equals(selectedCategory, ignoreCase = true) }
+        .filter {
+            searchQuery.isBlank() ||
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                it.type.contains(searchQuery, ignoreCase = true) ||
+                it.material.contains(searchQuery, ignoreCase = true)
+        }
+
+    // A failed background refresh keeps the list on screen and just says so.
+    LaunchedEffect(error, jewelryList.isNotEmpty()) {
+        val message = error
+        if (message != null && jewelryList.isNotEmpty()) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearError()
+        }
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -68,7 +95,7 @@ fun CatalogScreen(
                 .padding(paddingValues)
         ) {
 
-            // ── header banner ─────────────────────────────────────────────────
+            // Header banner
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -102,18 +129,45 @@ fun CatalogScreen(
                                 color = Color.White.copy(alpha = 0.8f)
                             )
                         }
-                        IconButton(
-                            onClick = onProfileClicked,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color.White.copy(alpha = 0.15f))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                Icons.Default.AccountCircle,
-                                contentDescription = "Profile",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
+                            // Facebook page link. Image instead of Icon because Icon's tint would turn the
+                            // two-tone logo into a flat silhouette.
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(FACEBOOK_PAGE_URL))
+                                        )
+                                    } catch (_: Exception) {
+                                        // no app can handle the intent - nothing sensible to do here
+                                    }
+                                },
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.ic_facebook),
+                                    contentDescription = "Visit our Facebook page",
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = onProfileClicked,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Icon(
+                                    Icons.Default.AccountCircle,
+                                    contentDescription = "Profile",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
                         }
                     }
 
@@ -151,19 +205,17 @@ fun CatalogScreen(
                 }
             }
 
-            // ── category chips ────────────────────────────────────────────────
+            // Category chips
             LazyRow(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(categories) { category ->
+                items(CATEGORIES) { category ->
                     FilterChip(
                         selected = selectedCategory == category,
                         onClick  = {
                             selectedCategory = category
                             searchQuery = ""
-                            if (category == "All") viewModel.loadJewelry()
-                            else viewModel.filterByType(category.lowercase())
                         },
                         label = {
                             Text(
@@ -181,43 +233,15 @@ fun CatalogScreen(
                 }
             }
 
-            // ── content area ──────────────────────────────────────────────────
+            // Content area
+            val loadError = error
             when {
-                isLoading -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-                error != null -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(32.dp)) {
-                            Icon(Icons.Filled.ErrorOutline, contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.error)
-                            Spacer(Modifier.height(12.dp))
-                            Text(error ?: "Unknown error",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodyMedium)
-                            Spacer(Modifier.height(16.dp))
-                            Button(onClick = { viewModel.loadJewelry() }) { Text("Retry") }
-                        }
-                    }
-                }
-                displayList.isEmpty() -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(32.dp)) {
-                            Icon(Icons.Filled.SearchOff, contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
-                            Spacer(Modifier.height(12.dp))
-                            Text("No jewelry found",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
+                isLoading && jewelryList.isEmpty() ->
+                    JewelryGridSkeleton(Modifier.fillMaxSize())
+                loadError != null && jewelryList.isEmpty() ->
+                    ErrorState(message = loadError, onRetry = viewModel::loadJewelry)
+                displayList.isEmpty() ->
+                    EmptyState(Icons.Filled.SearchOff, "No jewelry found")
                 else -> {
                     // section header count
                     Text(
@@ -248,7 +272,7 @@ fun CatalogScreen(
     }
 }
 
-// 2-column card — shows image + name only, click → product detail
+/** A catalog grid card: photo, name, type/material and price. Tapping opens the product page. */
 @Composable
 fun JewelryGridCard(
     jewelry: Jewelry,
@@ -266,40 +290,22 @@ fun JewelryGridCard(
         )
     ) {
         Column {
-            // product image — top portion of card
+            // product photo - top portion of the card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(160.dp)
             ) {
-                if (!jewelry.imageUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model              = jewelry.imageUrl,
-                        contentDescription = jewelry.name,
-                        modifier           = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)),
-                        contentScale       = ContentScale.Crop
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Diamond,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
+                JewelryImage(
+                    imageUrl = jewelry.imageUrl,
+                    contentDescription = jewelry.name,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                )
 
-                // availability badge pag out of stock
-                if (!jewelry.isAvailable) {
+                // "Unavailable" badge for out-of-stock items
+                if (!jewelry.inStock) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -317,7 +323,7 @@ fun JewelryGridCard(
                     }
                 }
 
-                // favorite heart — top-right badge (small indicator, not a button)
+                // favorite heart - top-right badge (small indicator, not a button)
                 if (isFavorite) {
                     Box(
                         modifier = Modifier
@@ -337,7 +343,7 @@ fun JewelryGridCard(
                 }
             }
 
-            // product info — name + type label
+            // product info - name + type label
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
@@ -359,7 +365,7 @@ fun JewelryGridCard(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "₱${String.format("%.2f", jewelry.price)}",
+                    text = formatPeso(jewelry.price),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary

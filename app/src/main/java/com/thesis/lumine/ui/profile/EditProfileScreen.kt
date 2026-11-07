@@ -1,32 +1,62 @@
 package com.thesis.lumine.ui.profile
 
-import android.Manifest
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.thesis.lumine.viewmodel.ProfileViewModel
 
-// edit profile screen — dito binabago ng user ang kanyang personal info
+private const val MAX_MOBILE_LENGTH = 16
+
+/** Where the user edits their name, username, mobile number and photo. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditProfileScreen(
@@ -34,17 +64,20 @@ fun EditProfileScreen(
     onSaved: () -> Unit,
     viewModel: ProfileViewModel = viewModel()
 ) {
-    val profile     by viewModel.profile.collectAsState()
-    val isLoading   by viewModel.isLoading.collectAsState()
+    val profile by viewModel.profile.collectAsState()
+    val isSaving by viewModel.isSaving.collectAsState()
+    val isUploadingAvatar by viewModel.isUploadingAvatar.collectAsState()
     val saveSuccess by viewModel.saveSuccess.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // i-init yung form fields gamit yung current profile data
-    var username by remember(profile) { mutableStateOf(profile.username) }
-    var firstName by remember(profile) { mutableStateOf(profile.firstName) }
-    var lastName  by remember(profile) { mutableStateOf(profile.lastName) }
-    var mobile    by remember(profile) { mutableStateOf(profile.mobileNumber ?: "") }
+    // Seeded once per account. Keying on the whole profile would wipe whatever
+    // the user has typed every time it changes (e.g. after a new photo uploads).
+    var username by remember(profile.userId) { mutableStateOf(profile.username) }
+    var firstName by remember(profile.userId) { mutableStateOf(profile.firstName) }
+    var lastName by remember(profile.userId) { mutableStateOf(profile.lastName) }
+    var mobile by remember(profile.userId) { mutableStateOf(profile.mobileNumber.orEmpty()) }
 
-    // pag na-save na, i-navigate sa success screen
     LaunchedEffect(saveSuccess) {
         if (saveSuccess) {
             viewModel.resetSaveSuccess()
@@ -52,25 +85,17 @@ fun EditProfileScreen(
         }
     }
 
-    // image picker launcher para sa avatar upload
-    val imageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let { viewModel.uploadAvatar(it) }
+    LaunchedEffect(error) {
+        error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+        }
     }
 
-    // tamang permission depende sa Android version ng device
-    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-        Manifest.permission.READ_MEDIA_IMAGES
-    else
-        Manifest.permission.READ_EXTERNAL_STORAGE
-
-    // i-request yung storage permission tapos i-launch yung picker pag granted
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) imageLauncher.launch("image/*")
-    }
+    // Android's photo picker: no storage permission needed.
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> uri?.let { viewModel.uploadAvatar(it) } }
 
     Scaffold(
         topBar = {
@@ -82,7 +107,8 @@ fun EditProfileScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -94,11 +120,13 @@ fun EditProfileScreen(
         ) {
             Spacer(Modifier.height(24.dp))
 
-            // avatar section — i-click para mag-upload ng bagong profile photo
+            // Avatar - tap to choose a new photo.
             Box(
                 modifier = Modifier
                     .size(100.dp)
-                    .clickable { permissionLauncher.launch(permission) },
+                    .clickable(enabled = !isUploadingAvatar, onClickLabel = "Change photo") {
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (!profile.avatarUrl.isNullOrBlank()) {
@@ -111,7 +139,6 @@ fun EditProfileScreen(
                             .clip(CircleShape)
                     )
                 } else {
-                    // default placeholder pag walang avatar pa
                     Box(
                         modifier = Modifier
                             .size(100.dp)
@@ -128,7 +155,18 @@ fun EditProfileScreen(
                     }
                 }
 
-                // camera badge sa lower-right ng avatar
+                if (isUploadingAvatar) {
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(Modifier.size(28.dp), color = Color.White, strokeWidth = 2.5.dp)
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .size(28.dp)
@@ -139,7 +177,7 @@ fun EditProfileScreen(
                 ) {
                     Icon(
                         Icons.Default.CameraAlt,
-                        contentDescription = "Change photo",
+                        contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
@@ -148,35 +186,33 @@ fun EditProfileScreen(
 
             Spacer(Modifier.height(4.dp))
             Text(
-                "Tap to change photo",
+                if (isUploadingAvatar) "Uploading photo…" else "Tap to change photo",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(24.dp))
 
-            // form fields para sa profile info
             OutlinedTextField(
                 value = username,
-                onValueChange = { username = it },
+                onValueChange = { username = it.take(50) },
                 label = { Text("Username") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
             Spacer(Modifier.height(12.dp))
 
-            // first at last name side by side sa isang row
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = firstName,
-                    onValueChange = { firstName = it },
+                    onValueChange = { firstName = it.take(60) },
                     label = { Text("First Name") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
                 OutlinedTextField(
                     value = lastName,
-                    onValueChange = { lastName = it },
+                    onValueChange = { lastName = it.take(60) },
                     label = { Text("Last Name") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
@@ -186,22 +222,33 @@ fun EditProfileScreen(
 
             OutlinedTextField(
                 value = mobile,
-                onValueChange = { mobile = it },
+                // Digits, a leading "+", spaces and dashes - what people actually type for a phone number.
+                onValueChange = { input ->
+                    val cleaned = input.filterIndexed { index, c ->
+                        c.isDigit() || c == ' ' || c == '-' || (c == '+' && index == 0)
+                    }
+                    mobile = cleaned.take(MAX_MOBILE_LENGTH)
+                },
                 label = { Text("Mobile Number (optional)") },
+                placeholder = { Text("09XX XXX XXXX") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
 
             Spacer(Modifier.height(32.dp))
 
-            // save button — disabled habang nag-loloading para maiwasang double submit
+            // Disabled while saving (no double submits) or while a photo is still uploading.
             Button(
                 onClick = { viewModel.updateProfile(username, firstName, lastName, mobile) },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = !isLoading
+                enabled = !isSaving && !isUploadingAvatar
             ) {
-                if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
-                else Text("Save", fontSize = 16.sp)
+                if (isSaving) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("Save", fontSize = 16.sp)
+                }
             }
 
             Spacer(Modifier.height(24.dp))
